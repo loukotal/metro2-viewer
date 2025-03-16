@@ -1,5 +1,6 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   baseFields,
   Field,
@@ -40,12 +41,21 @@ type ProcessedRecord = ParsedRecord & {
 
 const Metro2FileViewer = () => {
   const [file, setFile] = useState<File | null>(null);
-  const [_, setFileContent] = useState("");
+  const [fileContent, setFileContent] = useState("");
   const [records, setRecords] = useState<ProcessedRecord[]>([]);
   const [hoveredField, setHoveredField] = useState<ParsedField | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const infoCardRef = useRef<HTMLDivElement>(null);
+
+  // Set up virtualizer
+  const virtualizer = useVirtualizer({
+    count: records.length,
+    getScrollElement: () => contentRef.current,
+    estimateSize: () => 20, // estimated height per row
+    overscan: 100, // number of items to render before/after visible area
+  });
 
   // Add CSS for styling
   useEffect(() => {
@@ -205,34 +215,65 @@ const Metro2FileViewer = () => {
     if (!file) return;
 
     setFile(file);
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      if (!e.target?.result) return;
-      const content = e.target.result.toString();
-      setFileContent(content);
+    setIsLoading(true);
 
-      // Split the file content into records
-      const lines = content
-        .split("\n")
-        .filter((line) => line.trim().length > 0);
+    // Use a worker or chunked processing for large files
+    const processFileInChunks = async (file: File) => {
+      const reader = new FileReader();
 
-      // Determine record types based on content
-      const parsedRecords = lines.map((line, index) =>
-        parseRecord(line, index, lines),
-      );
+      reader.onload = async (e) => {
+        if (!e.target?.result) return;
+        const content = e.target.result.toString();
+        setFileContent(content);
 
-      // Process records to include field definitions
-      const processedRecords = parsedRecords.map((record) => {
-        const fields = parseRecordFields(record);
-        return {
-          ...record,
-          fields,
-        };
-      });
+        // Split the file content into records
+        const lines = content
+          .split("\n")
+          .filter((line) => line.trim().length > 0);
 
-      setRecords(processedRecords);
+        // Process in batches to avoid blocking the UI
+        const batchSize = 500;
+        const totalBatches = Math.ceil(lines.length / batchSize);
+        const processedRecords: ProcessedRecord[] = [];
+
+        for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
+          // Allow UI to update between batches
+          if (batchIndex > 0) {
+            await new Promise((resolve) => setTimeout(resolve, 0));
+          }
+
+          const batchStart = batchIndex * batchSize;
+          const batchEnd = Math.min(batchStart + batchSize, lines.length);
+          const batchLines = lines.slice(batchStart, batchEnd);
+
+          // Process this batch
+          for (let i = 0; i < batchLines.length; i++) {
+            const lineIndex = batchStart + i;
+            const record = parseRecord(batchLines[i], lineIndex, lines);
+            const fields = parseRecordFields(record);
+
+            processedRecords.push({
+              ...record,
+              fields,
+            });
+          }
+
+          // Update records as we go to show progress
+          setRecords([...processedRecords]);
+        }
+
+        setIsLoading(false);
+      };
+
+      reader.onerror = () => {
+        console.error("Error reading file");
+        setIsLoading(false);
+      };
+
+      reader.readAsText(file);
     };
-    reader.readAsText(file);
+
+    processFileInChunks(file);
   };
 
   const handleFieldHover = (field: ParsedField) => {
@@ -264,36 +305,38 @@ const Metro2FileViewer = () => {
     );
   };
 
-  // Render a record with all its fields
-  const renderRecord = (record: ProcessedRecord, index: number) => {
-    // Sort fields by position
-    const sortedFields = [...record.fields].sort(
-      (a, b) => a.startPos - b.startPos,
-    );
+  // Memoize record rendering
+  const renderRecord = useMemo(() => {
+    return (record: ProcessedRecord, index: number) => {
+      // Sort fields by position
+      const sortedFields = [...record.fields].sort(
+        (a, b) => a.startPos - b.startPos,
+      );
 
-    return (
-      <div
-        key={index}
-        className={`metro2-line ${record.segment ? `segment-${record.segment.toLowerCase()}` : ""}`}
-        data-record-index={index}
-        data-record-type={record.type}
-        data-segment={record.segment || ""}
-        style={{
-          backgroundColor:
-            record.type === "header"
-              ? "rgba(59, 130, 246, 0.05)"
-              : "transparent",
-          paddingLeft: record.segment ? "2px" : "0",
-        }}
-      >
-        {sortedFields.map((field) => renderField(field, index))}
-        {index < records.length - 1 && "\n"}
-      </div>
-    );
-  };
+      return (
+        <div
+          className={`metro2-line ${record.segment ? `segment-${record.segment.toLowerCase()}` : ""}`}
+          data-record-index={index}
+          data-record-type={record.type}
+          data-segment={record.segment || ""}
+          style={{
+            backgroundColor:
+              record.type === "header"
+                ? "rgba(59, 130, 246, 0.05)"
+                : "transparent",
+            paddingLeft: record.segment ? "2px" : "0",
+            height: "20px", // Fixed height for virtualizer
+            lineHeight: "20px",
+          }}
+        >
+          {sortedFields.map((field) => renderField(field, index))}
+        </div>
+      );
+    };
+  }, [hoveredField]); // Re-memoize when hoveredField changes
 
   return (
-    <div className="flex flex-col h-full w-full">
+    <div>
       <div className="mb-4 flex items-center">
         <input
           type="file"
@@ -301,18 +344,53 @@ const Metro2FileViewer = () => {
           onChange={handleFileUpload}
           accept=".dat"
           className="p-2 border rounded"
+          disabled={isLoading}
         />
-        {records.length > 0 && (
+        {isLoading && (
+          <div className="ml-4 text-sm text-blue-600 flex items-center">
+            <svg
+              className="animate-spin -ml-1 mr-3 h-5 w-5 text-blue-600"
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+            >
+              <circle
+                className="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                strokeWidth="4"
+              ></circle>
+              <path
+                className="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+              ></path>
+            </svg>
+            Processing file... ({records.length.toLocaleString()} records
+            processed)
+          </div>
+        )}
+        {!isLoading && records.length > 0 && (
           <div className="ml-4 text-sm text-gray-600">
-            Found {records.length} record{records.length !== 1 ? "s" : ""}:
+            Found {records.length.toLocaleString()} record
+            {records.length !== 1 ? "s" : ""}:
             {records.filter((r) => r.type === "header").length} header,
-            {records.filter((r) => r.type === "base").length} base
+            {records
+              .filter((r) => r.type === "base")
+              .length.toLocaleString()}{" "}
+            base
             {records.some((r) => r.segment) && (
               <span className="ml-2">
                 (including segments:
-                {records.some((r) => r.segment === "J1") && " J1"}
-                {records.some((r) => r.segment === "J2") && " J2"}
-                {records.some((r) => r.segment === "K1") && " K1"})
+                {records.some((r) => r.segment === "J1") &&
+                  ` J1 (${records.filter((r) => r.segment === "J1").length})`}
+                {records.some((r) => r.segment === "J2") &&
+                  ` J2 (${records.filter((r) => r.segment === "J2").length})`}
+                {records.some((r) => r.segment === "K1") &&
+                  ` K1 (${records.filter((r) => r.segment === "K1").length})`}
+                )
               </span>
             )}
           </div>
@@ -416,9 +494,8 @@ const Metro2FileViewer = () => {
               </div>
             </div>
           </div>
-          <div className="grid grid-cols-1 h-full">
-            {/* Left panel - Raw file content */}
-            <Card className="h-full flex flex-col">
+          <div>
+            <div className="h-full flex flex-col">
               <CardHeader className="py-3">
                 <CardTitle>Raw File Content</CardTitle>
               </CardHeader>
@@ -429,14 +506,33 @@ const Metro2FileViewer = () => {
                 onScroll={handleScroll}
               >
                 <div className="content-wrapper">
-                  <pre className="font-mono text-sm">
-                    {records.map((record, index) =>
-                      renderRecord(record, index),
-                    )}
+                  <pre
+                    className="font-mono text-sm relative"
+                    style={{ height: `${records.length * 20}px` }}
+                  >
+                    {virtualizer.getVirtualItems().map((virtualRow: any) => (
+                      <div
+                        key={virtualRow.index}
+                        data-index={virtualRow.index}
+                        style={{
+                          position: "absolute",
+                          top: 0,
+                          left: 0,
+                          width: "100%",
+                          height: `${virtualRow.size}px`,
+                          transform: `translateY(${virtualRow.start}px)`,
+                        }}
+                      >
+                        {renderRecord(
+                          records[virtualRow.index],
+                          virtualRow.index,
+                        )}
+                      </div>
+                    ))}
                   </pre>
                 </div>
               </CardContent>
-            </Card>
+            </div>
           </div>
         </>
       )}
