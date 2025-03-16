@@ -1,54 +1,38 @@
-# React + TypeScript + Vite
+# Metro2 File Viewer
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A simple thing to inspect character-format Metro2 files.
 
-Currently, two official plugins are available:
+## Overview
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+The Metro2 File Viewer is a lightweight tool for exploring character-based Metro2 files (not packed binary format) that are newline delimited. It has limited functionality and was built as a "vibe coding" exercise rather than a production-ready tool.
 
-## Expanding the ESLint configuration
+## Features
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+- Uploads and parses newline-delimited character-format Metro2 files
+- Shows field information on hover
+- Basic segment detection (Base, J1, J2, K1)
+- Simple position tracking
+- Responsive layout that works on most screens
 
-```js
-export default tseslint.config({
-  extends: [
-    // Remove ...tseslint.configs.recommended and replace with this
-    ...tseslint.configs.recommendedTypeChecked,
-    // Alternatively, use this for stricter rules
-    ...tseslint.configs.strictTypeChecked,
-    // Optionally, add this for stylistic rules
-    ...tseslint.configs.stylisticTypeChecked,
-  ],
-  languageOptions: {
-    // other options...
-    parserOptions: {
-      project: ['./tsconfig.node.json', './tsconfig.app.json'],
-      tsconfigRootDir: import.meta.dirname,
-    },
-  },
-})
-```
+## How to
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+1. `npm install`
+2. `npm run dev`
+3. Upload a .dat file
+4. View the file content and field information
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+## Format Support
 
-export default tseslint.config({
-  plugins: {
-    // Add the react-x and react-dom plugins
-    'react-x': reactX,
-    'react-dom': reactDom,
-  },
-  rules: {
-    // other rules...
-    // Enable its recommended typescript rules
-    ...reactX.configs['recommended-typescript'].rules,
-    ...reactDom.configs.recommended.rules,
-  },
-})
-```
+Only supports Metro2 character-format files that are newline delimited (not packed binary format). Basic support for:
+
+- Header Record
+- Base Segment
+- J1/J2/K1 segments
+- Trailer Record
+
+## Limitations
+
+- Only handles character format (not packed binary)
+- Requires newline delimiters between records
+- Limited error handling
+- Testing/demo purposes only
