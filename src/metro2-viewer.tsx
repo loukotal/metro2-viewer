@@ -10,13 +10,41 @@ import {
   trailerFields,
 } from "./fields";
 
+// Define proper types
+type RecordType = "base" | "header" | "trailer";
+type SegmentType = "J1" | "J2" | "K1" | "";
+
+type ParsedRecord = {
+  lineNumber: number;
+  content: string;
+  type: RecordType;
+  segment: SegmentType;
+  startPos: number;
+  length: number;
+  baseContent: string;
+  segmentContent: string;
+};
+
+type ParsedField = Field & {
+  value: string;
+  startPos: number;
+  endPos: number;
+  type: "base" | "segment";
+  recordType: RecordType;
+  segment: SegmentType;
+};
+
+type ProcessedRecord = ParsedRecord & {
+  fields: ParsedField[];
+};
+
 const Metro2FileViewer = () => {
   const [file, setFile] = useState<File | null>(null);
-  const [fileContent, setFileContent] = useState("");
-  const [records, setRecords] = useState<ReturnType<typeof parseRecord>[]>([]);
-  const [hoveredField, setHoveredField] = useState<ParseRecord | null>(null);
-  const fileInputRef = useRef(null);
-  const contentRef = useRef(null);
+  const [_, setFileContent] = useState("");
+  const [records, setRecords] = useState<ProcessedRecord[]>([]);
+  const [hoveredField, setHoveredField] = useState<ParsedField | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const infoCardRef = useRef<HTMLDivElement>(null);
 
   // Add CSS for styling
@@ -60,107 +88,14 @@ const Metro2FileViewer = () => {
     };
   }, []);
 
-  type Record = {
-    lineNumber: number;
-    content: string;
-    type: "base" | "header" | "trailer";
-    segment: string;
-    startPos: number;
-    length: number;
-    baseContent: string;
-    segmentContent: string;
-    fields: Field[];
-  };
-
-  type ParseRecord = {
-    type: "base" | "header" | "trailer" | "segment";
-    recordType: string;
-    segment: string | null;
-    value: string;
-    startPos: number;
-    endPos: number;
-    name: string;
-    required: "A" | "Y" | "N";
-    format: "AN" | "N";
-    length: number;
-    position: [number, number];
-    fields: Field[];
-  };
-  // Process a record and split it into fields with meta information
-  const parseRecordFields = (record: ReturnType<typeof parseRecord>) => {
-    const fieldsArray: ParseRecord[] = [];
-    const fieldsDefinition =
-      record.type === "header"
-        ? headerFields
-        : record.type === "trailer"
-          ? trailerFields
-          : baseFields;
-
-    // Process base/header fields
-    fieldsDefinition.forEach((field) => {
-      const startIdx = field.position[0] - 1;
-      const endIdx = Math.min(field.position[1], record.content.length);
-
-      if (startIdx < record.content.length) {
-        const value = record.content.substring(startIdx, endIdx);
-
-        fieldsArray.push({
-          ...field,
-          value,
-          startPos: startIdx,
-          endPos: endIdx - 1,
-          type: "base",
-          recordType: record.type,
-          segment: "",
-          fields: [],
-        });
-      }
-    });
-
-    // Process segment fields if any
-    if (record.segment) {
-      let segmentFields;
-
-      if (record.segment === "J1") {
-        segmentFields = j1Fields;
-      } else if (record.segment === "J2") {
-        segmentFields = j2Fields;
-      } else if (record.segment === "K1") {
-        segmentFields = k1Fields;
-      }
-
-      if (segmentFields) {
-        segmentFields.forEach((field) => {
-          const startIdx = field.position[0] - 1;
-          const endIdx = Math.min(
-            field.position[1],
-            record.segmentContent.length,
-          );
-
-          if (startIdx < record.segmentContent.length) {
-            const value = record.segmentContent.substring(startIdx, endIdx);
-
-            fieldsArray.push({
-              ...field,
-              value,
-              startPos: startIdx + 426,
-              endPos: endIdx + 426 - 1,
-              type: "segment",
-              recordType: record.type,
-              segment: record.segment,
-              fields: seg,
-            });
-          }
-        });
-      }
-    }
-
-    return fieldsArray;
-  };
-
-  function parseRecord(line: string, index: number, lines: string[]) {
-    let recordType = "base";
-    let segment = "";
+  // Parse a record from a line
+  const parseRecord = (
+    line: string,
+    index: number,
+    lines: string[],
+  ): ParsedRecord => {
+    let recordType: RecordType = "base";
+    let segment: SegmentType = "";
 
     if (line.startsWith("0426")) {
       if (line.includes("HEADER")) {
@@ -193,43 +128,114 @@ const Metro2FileViewer = () => {
       baseContent: line.substring(0, Math.min(426, line.length)),
       segmentContent: segment ? line.substring(426) : "",
     };
-  }
+  };
+
+  // Process a record and split it into fields with meta information
+  const parseRecordFields = (record: ParsedRecord): ParsedField[] => {
+    const fieldsArray: ParsedField[] = [];
+    const fieldsDefinition =
+      record.type === "header"
+        ? headerFields
+        : record.type === "trailer"
+          ? trailerFields
+          : baseFields;
+
+    // Process base/header fields
+    fieldsDefinition.forEach((field) => {
+      const startIdx = field.position[0] - 1;
+      const endIdx = Math.min(field.position[1], record.content.length);
+
+      if (startIdx < record.content.length) {
+        const value = record.content.substring(startIdx, endIdx);
+
+        fieldsArray.push({
+          ...field,
+          value,
+          startPos: startIdx,
+          endPos: endIdx - 1,
+          type: "base",
+          recordType: record.type,
+          segment: "",
+        });
+      }
+    });
+
+    // Process segment fields if any
+    if (record.segment) {
+      let segmentFields: Field[] | undefined;
+
+      if (record.segment === "J1") {
+        segmentFields = j1Fields;
+      } else if (record.segment === "J2") {
+        segmentFields = j2Fields;
+      } else if (record.segment === "K1") {
+        segmentFields = k1Fields;
+      }
+
+      if (segmentFields) {
+        segmentFields.forEach((field) => {
+          const startIdx = field.position[0] - 1;
+          const endIdx = Math.min(
+            field.position[1],
+            record.segmentContent.length,
+          );
+
+          if (startIdx < record.segmentContent.length) {
+            const value = record.segmentContent.substring(startIdx, endIdx);
+
+            fieldsArray.push({
+              ...field,
+              value,
+              startPos: startIdx + 426,
+              endPos: endIdx + 426 - 1,
+              type: "segment",
+              recordType: record.type,
+              segment: record.segment,
+            });
+          }
+        });
+      }
+    }
+
+    return fieldsArray;
+  };
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-    if (file) {
-      setFile(file);
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        if (!e.target?.result) return;
-        const content = e.target.result.toString();
-        setFileContent(content);
 
-        // Split the file content into records
-        const lines = content
-          .split("\n")
-          .filter((line) => line.trim().length > 0);
+    setFile(file);
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      if (!e.target?.result) return;
+      const content = e.target.result.toString();
+      setFileContent(content);
 
-        // Determine record types based on content
-        const parsedRecords = lines.map(parseRecord);
+      // Split the file content into records
+      const lines = content
+        .split("\n")
+        .filter((line) => line.trim().length > 0);
 
-        // Process records to include field definitions
-        const processedRecords = parsedRecords.map((record) => {
-          const fields = parseRecordFields(record);
-          return {
-            ...record,
-            fields,
-          };
-        });
+      // Determine record types based on content
+      const parsedRecords = lines.map((line, index) =>
+        parseRecord(line, index, lines),
+      );
 
-        setRecords(processedRecords);
-      };
-      reader.readAsText(file);
-    }
+      // Process records to include field definitions
+      const processedRecords = parsedRecords.map((record) => {
+        const fields = parseRecordFields(record);
+        return {
+          ...record,
+          fields,
+        };
+      });
+
+      setRecords(processedRecords);
+    };
+    reader.readAsText(file);
   };
 
-  const handleFieldHover = (field: Field) => {
+  const handleFieldHover = (field: ParsedField) => {
     setHoveredField(field);
   };
 
@@ -244,7 +250,7 @@ const Metro2FileViewer = () => {
   };
 
   // Render a single field with appropriate styling
-  const renderField = (field: Field, recordIndex: number) => {
+  const renderField = (field: ParsedField, recordIndex: number) => {
     return (
       <span
         key={`${recordIndex}-${field.startPos}-${field.endPos}`}
@@ -252,14 +258,6 @@ const Metro2FileViewer = () => {
         onMouseEnter={() => handleFieldHover(field)}
         data-field-name={field.name}
         data-segment={field.segment || ""}
-        // style={{
-        //   backgroundColor:
-        //     hoveredField &&
-        //     hoveredField.startPos === field.startPos &&
-        //     hoveredField.endPos === field.endPos
-        //       ? "rgba(59, 130, 246, 0.2)"
-        //       : "transparent",
-        // }}
       >
         {field.value}
       </span>
@@ -267,7 +265,7 @@ const Metro2FileViewer = () => {
   };
 
   // Render a record with all its fields
-  const renderRecord = (record: ParseRecord, index: number) => {
+  const renderRecord = (record: ProcessedRecord, index: number) => {
     // Sort fields by position
     const sortedFields = [...record.fields].sort(
       (a, b) => a.startPos - b.startPos,
@@ -324,7 +322,7 @@ const Metro2FileViewer = () => {
       {file && (
         <>
           <div className="top-0 sticky bg-white z-1 max-w-2xl">
-            <div className="mb-4 px-10 m-4  border-blue-600 border-2 shadow-sm py-4">
+            <div className="mb-4 px-10 m-4 border-blue-600 border-2 shadow-sm py-4">
               <h2 className="font-bold text-lg">Field Information</h2>
               <div
                 className="overflow-auto flex-grow field-info-content top-0 sticky"
@@ -361,7 +359,9 @@ const Metro2FileViewer = () => {
                               ? "Alphanumeric"
                               : hoveredField.format === "B"
                                 ? "Binary"
-                                : hoveredField.format}
+                                : hoveredField.format === "P"
+                                  ? "Packed"
+                                  : hoveredField.format}
                         </div>
 
                         <div className="font-medium">Length:</div>
@@ -378,9 +378,7 @@ const Metro2FileViewer = () => {
                               ? "No"
                               : hoveredField.required === "A"
                                 ? "Applicable"
-                                : hoveredField.required === "C"
-                                  ? "Conditional"
-                                  : hoveredField.required}
+                                : "Conditional"}
                         </div>
 
                         <div className="font-medium">Character Position:</div>
@@ -418,7 +416,7 @@ const Metro2FileViewer = () => {
               </div>
             </div>
           </div>
-          <div className="grid grid-cols-1  h-full">
+          <div className="grid grid-cols-1 h-full">
             {/* Left panel - Raw file content */}
             <Card className="h-full flex flex-col">
               <CardHeader className="py-3">
@@ -439,8 +437,6 @@ const Metro2FileViewer = () => {
                 </div>
               </CardContent>
             </Card>
-
-            {/* Right panel - Field information */}
           </div>
         </>
       )}
