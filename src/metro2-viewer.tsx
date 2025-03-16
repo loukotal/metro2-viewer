@@ -325,7 +325,7 @@ const Metro2FileViewer = () => {
                 ? "rgba(59, 130, 246, 0.05)"
                 : "transparent",
             paddingLeft: record.segment ? "2px" : "0",
-            height: "20px", // Fixed height for virtualizer
+            height: "20px",
             lineHeight: "20px",
           }}
         >
@@ -399,7 +399,7 @@ const Metro2FileViewer = () => {
 
       {file && (
         <>
-          <div className="top-0 sticky bg-white z-1 max-w-2xl">
+          <div className="top-0 sticky bg-white z-1 max-w-3xl">
             <div className="mb-4 px-10 m-4 border-blue-600 border-2 shadow-sm py-4">
               <h2 className="font-bold text-lg">Field Information</h2>
               <div
@@ -410,10 +410,13 @@ const Metro2FileViewer = () => {
                 <div className="h-full">
                   {hoveredField ? (
                     <div className="top-0 sticky">
-                      <h3 className="text-md font-bold mb-2">
-                        {hoveredField.name}
-                      </h3>
                       <div className="grid grid-cols-2">
+                        <div className="text-md font-medium mt-2">
+                          Field Name:
+                        </div>
+                        <div className="text-md font-medium">
+                          {hoveredField.name}
+                        </div>
                         <div className="font-medium">Record Type:</div>
                         <div className="capitalize">
                           {hoveredField.recordType}
@@ -495,17 +498,17 @@ const Metro2FileViewer = () => {
             </div>
           </div>
           <div>
-            <div className="h-full flex flex-col">
+            <div className="h-full flex flex-col overflow-x-auto">
               <CardHeader className="py-3">
                 <CardTitle>Raw File Content</CardTitle>
               </CardHeader>
               <CardContent
-                className="overflow-auto flex-grow"
+                className="overflow-auto flex-grow h-[700px]"
                 ref={contentRef}
                 onMouseLeave={() => setHoveredField(null)}
                 onScroll={handleScroll}
               >
-                <div className="content-wrapper">
+                <div className={`h-[${virtualizer.getTotalSize()}px] relative`}>
                   <pre
                     className="font-mono text-sm relative"
                     style={{ height: `${records.length * 20}px` }}
