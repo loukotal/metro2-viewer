@@ -438,7 +438,7 @@ const Metro2FileViewer = () => {
                         <div className="text-md font-medium mt-2">
                           Field Name:
                         </div>
-                        <div className="text-md font-medium">
+                        <div className="text-md font-medium truncate">
                           {hoveredField.name}
                         </div>
                         <div className="font-medium">Record Type:</div>
