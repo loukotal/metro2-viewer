@@ -44,10 +44,12 @@ const Metro2FileViewer = () => {
   const [fileContent, setFileContent] = useState("");
   const [records, setRecords] = useState<ProcessedRecord[]>([]);
   const [hoveredField, setHoveredField] = useState<ParsedField | null>(null);
+  const [selectedFieldName, setSelectedFieldName] = useState<string | null>(null); // Added state for selected field name
   const [isLoading, setIsLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const infoCardRef = useRef<HTMLDivElement>(null);
+  console.log(records.filter((r) => r.segment === "K1"));
 
   // Set up virtualizer
   const virtualizer = useVirtualizer({
@@ -90,6 +92,10 @@ const Metro2FileViewer = () => {
       
       .field-info-content {
         min-height: 200px;
+      }
+
+      .highlighted-field {
+        background-color: rgba(144, 238, 144, 0.5); /* Light green highlight */
       }
     `;
     document.head.appendChild(style);
@@ -280,6 +286,16 @@ const Metro2FileViewer = () => {
     setHoveredField(field);
   };
 
+  // Handle clicking on a field to highlight it across base segments
+  const handleFieldClick = (field: ParsedField) => {
+    if (field.recordType === "base") {
+      setSelectedFieldName((prev) => (prev === field.name ? null : field.name));
+    } else {
+      // Optionally clear selection if a non-base field is clicked
+      // setSelectedFieldName(null); 
+    }
+  };
+
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     // Sync scroll position of the right panel
     if (contentRef.current && infoCardRef.current) {
@@ -292,11 +308,19 @@ const Metro2FileViewer = () => {
 
   // Render a single field with appropriate styling
   const renderField = (field: ParsedField, recordIndex: number) => {
+    const isHighlighted =
+      selectedFieldName !== null &&
+      field.recordType === "base" &&
+      field.name === selectedFieldName;
+
     return (
       <span
         key={`${recordIndex}-${field.startPos}-${field.endPos}`}
-        className="metro2-field hover:bg-[rgba(59,130,246,0.2)] cursor-pointer"
+        className={`metro2-field hover:bg-[rgba(59,130,246,0.2)] cursor-pointer ${
+          isHighlighted ? "highlighted-field" : ""
+        }`}
         onMouseEnter={() => handleFieldHover(field)}
+        onClick={() => handleFieldClick(field)} // Added onClick handler
         data-field-name={field.name}
         data-segment={field.segment || ""}
       >
@@ -333,7 +357,7 @@ const Metro2FileViewer = () => {
         </div>
       );
     };
-  }, [hoveredField]); // Re-memoize when hoveredField changes
+  }, [hoveredField, selectedFieldName]); // Re-memoize when hoveredField or selectedFieldName changes
 
   return (
     <div>
