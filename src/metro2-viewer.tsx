@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   baseFields,
@@ -41,10 +41,12 @@ type ProcessedRecord = ParsedRecord & {
 
 const Metro2FileViewer = () => {
   const [file, setFile] = useState<File | null>(null);
-  const [fileContent, setFileContent] = useState("");
+  const [_, setFileContent] = useState("");
   const [records, setRecords] = useState<ProcessedRecord[]>([]);
   const [hoveredField, setHoveredField] = useState<ParsedField | null>(null);
-  const [selectedFieldName, setSelectedFieldName] = useState<string | null>(null); // Added state for selected field name
+  const [selectedFieldName, setSelectedFieldName] = useState<string | null>(
+    null,
+  ); // Added state for selected field name
   const [isLoading, setIsLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -292,7 +294,7 @@ const Metro2FileViewer = () => {
       setSelectedFieldName((prev) => (prev === field.name ? null : field.name));
     } else {
       // Optionally clear selection if a non-base field is clicked
-      // setSelectedFieldName(null); 
+      // setSelectedFieldName(null);
     }
   };
 
